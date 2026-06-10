@@ -1,0 +1,6 @@
+# macOS
+.DS_Store
+
+# Unrelated sibling-project artifact, not part of this extension
+212Video Sibling Project.zip
+*.zip

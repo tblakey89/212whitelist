@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>This one's locked</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="locked.css">
+</head>
+<body>
+  <!-- ambient sun scene (matches 212's "timeup" takeover) -->
+  <div class="scene" aria-hidden="true">
+    <div class="sun"></div>
+    <svg class="hills" viewBox="0 0 1440 320" preserveAspectRatio="none">
+      <path fill="#9DBE86" d="M0 220 Q360 120 720 200 T1440 180 V320 H0 Z" opacity="0.9" />
+      <path fill="#86AC72" d="M0 260 Q420 200 840 250 T1440 240 V320 H0 Z" />
+    </svg>
+    <div class="cloud-float cloud" style="left:14%; top:18%;"></div>
+    <div class="cloud-float cloud" style="left:70%; top:26%; opacity:.8; animation-delay:1.5s;"></div>
+    <div class="cloud-float cloud" style="left:40%; top:11%; opacity:.6; animation-delay:3s;"></div>
+  </div>
+
+  <main class="stage" id="card">
+    <!-- Pip, the 212 mascot, waving hello -->
+    <div class="pip">
+      <svg viewBox="-50 -52 100 104" width="146" height="146" style="overflow:visible">
+        <defs>
+          <linearGradient id="pipg" x1="0" y1="-50" x2="0" y2="50" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="rgb(244,131,95)" />
+            <stop offset="1" stop-color="#F2683C" />
+          </linearGradient>
+        </defs>
+        <g class="pip-bob">
+          <rect x="-40" y="-42" width="80" height="84" rx="38" ry="40" fill="url(#pipg)" />
+          <circle cx="-26" cy="-44" r="9" fill="#F2683C" />
+          <circle cx="26" cy="-44" r="9" fill="#F2683C" />
+          <circle cx="-22" cy="6" r="7" fill="#fff" opacity="0.28" />
+          <circle cx="22" cy="6" r="7" fill="#fff" opacity="0.28" />
+          <g transform="translate(0,-6)">
+            <g><circle cx="-13" cy="1" r="4.6" fill="#2A2018" /><circle cx="-11.4" cy="-0.8" r="1.5" fill="#fff" /></g>
+            <g><circle cx="13" cy="1" r="4.6" fill="#2A2018" /><circle cx="14.6" cy="-0.8" r="1.5" fill="#fff" /></g>
+            <path d="M-7 11 q7 9 14 0" fill="none" stroke="#2A2018" stroke-width="3.4" stroke-linecap="round" />
+          </g>
+          <g class="pip-wave"><rect x="34" y="-2" width="13" height="26" rx="6.5" fill="#F2683C" /></g>
+        </g>
+      </svg>
+    </div>
+
+    <h1>This one's locked</h1>
+    <p class="sub">Ask a grown-up to open it for you.</p>
+
+    <div class="domain-chip">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2.4" /><path d="M8 10.5 V7.5 a4 4 0 0 1 8 0 V10.5" /></svg>
+      <strong id="domain">example.com</strong>
+    </div>
+
+    <form id="form" autocomplete="off">
+      <input
+        id="pw"
+        type="password"
+        placeholder="Grown-up password"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        autofocus>
+      <button type="submit">Unlock</button>
+      <p class="error" id="error" role="alert"></p>
+    </form>
+  </main>
+
+  <script src="locked.js"></script>
+</body>
+</html>
