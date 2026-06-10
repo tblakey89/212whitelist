@@ -3,11 +3,19 @@
 ## Overview
 
 **WhitelistWeb** is a small parental-control browser extension. It blocks a child
-from visiting *any* website until a parent types a password. Unlocks are
-**per-site** and **per-session**: once a parent unlocks `youtube.com`, that
-domain stays open until the browser fully closes, at which point everything
-re-locks. It is intentionally simple — designed to stop an 8-year-old, **not** a
-determined adult.
+from visiting *any* website until a parent types a password. Unlocking is
+**per-site**, and the parent chooses the duration each time:
+
+- **Allow forever** — the site is whitelisted permanently (stored in
+  `chrome.storage.local`); it stays open across browser restarts until you
+  remove it in Settings or hit "Lock everything now".
+- **Just this time** — the site is open only for the current browsing session
+  (`chrome.storage.session`); it re-locks once the browser fully closes.
+
+"Lock everything now" in the toolbar popup wipes **both** lists, and Settings
+lists every "forever" site so you can remove them individually. It is
+intentionally simple — designed to stop an 8-year-old, **not** a determined
+adult.
 
 ## About the files in this bundle
 

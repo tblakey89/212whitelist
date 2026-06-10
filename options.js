@@ -26,6 +26,42 @@ async function render() {
   document.getElementById('change').hidden = !hash;
 }
 
+// --- Always-allowed ("forever") sites ---
+const foreverList = document.getElementById('foreverList');
+
+async function renderForever() {
+  let res;
+  try {
+    res = await chrome.runtime.sendMessage({ type: 'getStatus' });
+  } catch (e) {
+    res = null;
+  }
+  const sites = ((res && res.permanent) || []).slice().sort();
+  foreverList.textContent = '';
+
+  if (!sites.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'No sites allowed forever yet.';
+    foreverList.appendChild(li);
+    return;
+  }
+
+  sites.forEach((domain) => {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.textContent = domain;
+    const btn = document.createElement('button');
+    btn.textContent = 'Remove';
+    btn.addEventListener('click', async () => {
+      await chrome.runtime.sendMessage({ type: 'forget', domain });
+      renderForever();
+    });
+    li.append(name, btn);
+    foreverList.appendChild(li);
+  });
+}
+
 // --- First-time setup ---
 document.getElementById('saveNew').addEventListener('click', async () => {
   const a = document.getElementById('new1').value;
@@ -59,3 +95,4 @@ document.getElementById('saveChange').addEventListener('click', async () => {
 });
 
 render();
+renderForever();

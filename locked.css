@@ -136,6 +136,16 @@ button {
 button:hover { filter: brightness(1.04); }
 button:active { transform: scale(0.98); }
 
+/* "Just this time" — quieter ghost button under the primary action */
+button.secondary {
+  font-size: 17px;
+  padding: 12px 20px;
+  color: #C0562E;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(60, 38, 20, .12);
+}
+button.secondary:hover { filter: none; background: #FFF4EC; }
+
 .error {
   min-height: 22px;
   font-weight: 700;

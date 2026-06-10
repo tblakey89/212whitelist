@@ -24,8 +24,9 @@ function shake() {
   card.classList.add('shake');
 }
 
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
+// scope: 'forever' (persists, stored in chrome.storage.local)
+//        'session' (clears when the browser fully closes)
+async function unlock(scope) {
   errorEl.textContent = '';
 
   const password = input.value;
@@ -39,6 +40,7 @@ form.addEventListener('submit', async (e) => {
   try {
     res = await chrome.runtime.sendMessage({
       type: 'unlock',
+      scope,
       domain,
       url: targetUrl,
       password
@@ -58,4 +60,8 @@ form.addEventListener('submit', async (e) => {
     input.value = '';
     input.focus();
   }
-});
+}
+
+// Enter / "Allow forever" → permanent. "Just this time" → session-only.
+form.addEventListener('submit', (e) => { e.preventDefault(); unlock('forever'); });
+document.getElementById('once').addEventListener('click', () => unlock('session'));

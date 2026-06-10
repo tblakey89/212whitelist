@@ -14,10 +14,12 @@
 
 // ---- Storage keys -------------------------------------------------------
 const PW_KEY = 'passwordHash';        // chrome.storage.local  -> string (hex sha256)
-const ALLOW_KEY = 'unlockedDomains';  // chrome.storage.session -> string[]
+const ALLOW_KEY = 'unlockedDomains';  // chrome.storage.local   -> string[] (forever)
+const SESSION_KEY = 'sessionDomains'; // chrome.storage.session -> string[] (this session only)
 
 // ---- In-memory cache (fast path so the redirect happens early) ----------
-let allowSet = new Set();
+let allowSet = new Set();    // forever (local)
+let sessionSet = new Set();  // this session only (session)
 let passwordHash = null;
 let cacheReady = false;
 
@@ -77,11 +79,12 @@ async function sha256(text) {
 
 async function loadCache() {
   const [localData, sessionData] = await Promise.all([
-    chrome.storage.local.get(PW_KEY),
-    chrome.storage.session.get(ALLOW_KEY)
+    chrome.storage.local.get([PW_KEY, ALLOW_KEY]),
+    chrome.storage.session.get(SESSION_KEY)
   ]);
   passwordHash = localData[PW_KEY] || null;
-  allowSet = new Set(sessionData[ALLOW_KEY] || []);
+  allowSet = new Set(localData[ALLOW_KEY] || []);
+  sessionSet = new Set(sessionData[SESSION_KEY] || []);
   cacheReady = true;
 }
 
@@ -93,8 +96,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes[PW_KEY]) {
     passwordHash = changes[PW_KEY].newValue || null;
   }
-  if (area === 'session' && changes[ALLOW_KEY]) {
+  if (area === 'local' && changes[ALLOW_KEY]) {
     allowSet = new Set(changes[ALLOW_KEY].newValue || []);
+  }
+  if (area === 'session' && changes[SESSION_KEY]) {
+    sessionSet = new Set(changes[SESSION_KEY].newValue || []);
   }
 });
 
@@ -118,7 +124,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   }
 
   const domain = getBaseDomain(new URL(url).hostname);
-  if (!domain || allowSet.has(domain)) return; // allowed this session
+  if (!domain || allowSet.has(domain) || sessionSet.has(domain)) return; // allowed forever or this session
 
   // Block: redirect the tab to the lock screen before the real page renders.
   const locked = chrome.runtime.getURL('locked.html')
@@ -147,8 +153,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // and navigate the tab to the originally requested URL.
       const ok = !!passwordHash && (await sha256(msg.password || '')) === passwordHash;
       if (ok && shouldGuard(msg.url)) {
-        allowSet.add(msg.domain);
-        await chrome.storage.session.set({ [ALLOW_KEY]: [...allowSet] });
+        if (msg.scope === 'session') {
+          // "Just this time" — clears when the browser fully closes.
+          sessionSet.add(msg.domain);
+          await chrome.storage.session.set({ [SESSION_KEY]: [...sessionSet] });
+        } else {
+          // "Allow forever" — persists until removed in Settings or "Lock now".
+          allowSet.add(msg.domain);
+          await chrome.storage.local.set({ [ALLOW_KEY]: [...allowSet] });
+        }
         const tabId = sender.tab && sender.tab.id;
         if (tabId != null) chrome.tabs.update(tabId, { url: msg.url });
         sendResponse({ ok: true });
@@ -159,16 +172,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg && msg.type === 'lockNow') {
+      // Full reset: wipe both the forever list and the session list.
       allowSet = new Set();
-      await chrome.storage.session.set({ [ALLOW_KEY]: [] });
+      sessionSet = new Set();
+      await Promise.all([
+        chrome.storage.local.set({ [ALLOW_KEY]: [] }),
+        chrome.storage.session.set({ [SESSION_KEY]: [] })
+      ]);
+      sendResponse({ ok: true });
+      return;
+    }
+
+    // Remove a single "forever" site (used by the Settings list).
+    if (msg && msg.type === 'forget') {
+      allowSet.delete(msg.domain);
+      await chrome.storage.local.set({ [ALLOW_KEY]: [...allowSet] });
       sendResponse({ ok: true });
       return;
     }
 
     if (msg && msg.type === 'getStatus') {
       sendResponse({
-        count: allowSet.size,
-        domains: [...allowSet],
+        permanent: [...allowSet],
+        session: [...sessionSet],
+        count: allowSet.size + sessionSet.size,
         hasPassword: !!passwordHash
       });
       return;
