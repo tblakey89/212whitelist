@@ -69,17 +69,19 @@ WhitelistWeb/
    `data:`) is skipped. Because the extension's own pages are
    `chrome-extension://`, this is also what prevents it from ever blocking
    `locked.html` / `options.html`.
-3. The destination hostname is reduced to its **base domain (eTLD+1)** via
-   `getBaseDomain()`, so `m.youtube.com` and `www.youtube.com` both resolve to
-   `youtube.com`. A small built-in set of compound public suffixes
-   (`co.uk`, `com.au`, `co.jp`, …) keeps `bbc.co.uk` from collapsing to `co.uk`.
-4. If the base domain is **not** in the session allow-list, the tab is
-   redirected with `chrome.tabs.update(tabId, { url: locked.html?... })` —
-   before the real page renders. The original URL and domain are passed as
+3. The destination hostname is turned into a **site key** via `getSiteKey()`:
+   the full hostname, lowercased, with a leading `www.` stripped. So each
+   subdomain is its **own** site — `m.youtube.com` and `kids.youtube.com` are
+   distinct from `youtube.com` — while `www.youtube.com` collapses to
+   `youtube.com` so the common bare→www redirect doesn't re-lock the page you
+   just approved.
+4. If the site key is **not** in either allow-list (forever or this-session),
+   the tab is redirected with `chrome.tabs.update(tabId, { url: locked.html?... })`
+   — before the real page renders. The original URL and key are passed as
    query params.
 5. The lock screen verifies the password (via a message to the background
-   worker), and on success the worker adds the domain to the allow-list and
-   navigates the tab to the originally requested URL.
+   worker), and on success the worker adds the site to the chosen allow-list
+   (`scope: 'forever' | 'session'`) and navigates the tab to the original URL.
 
 ### Why interception goes through a cached decision
 `onBeforeNavigate` cannot be awaited to *block*, and MV3 service workers can be
@@ -99,9 +101,10 @@ per-session password flow.
 
 ### Unlock routing (avoids a re-lock race)
 `locked.js` does **not** mutate storage directly. It sends
-`{ type: 'unlock', domain, url, password }` to the background worker. The worker
-verifies the hash, updates its **in-memory `allowSet` first** (synchronously),
-persists to `chrome.storage.session`, then navigates the tab. Doing the cache
+`{ type: 'unlock', scope, domain, url, password }` to the background worker. The
+worker verifies the hash, updates the matching **in-memory set first**
+(synchronously — `allowSet` for `forever`, `sessionSet` for `session`), persists
+to the corresponding storage area, then navigates the tab. Doing the cache
 update in the worker before navigation guarantees the subsequent
 `onBeforeNavigate` sees the domain as allowed and does not re-lock.
 
@@ -117,10 +120,11 @@ If no password hash exists yet:
 | Key | Area | Shape | Purpose |
 |---|---|---|---|
 | `passwordHash` | `chrome.storage.local` | hex string (SHA-256) | persistent password, **hash only, never plaintext** |
-| `unlockedDomains` | `chrome.storage.session` | `string[]` of base domains | session allow-list; auto-cleared when the browser fully closes |
+| `unlockedDomains` | `chrome.storage.local` | `string[]` of site keys | **forever** allow-list; persists across restarts until removed in Settings or "Lock now" |
+| `sessionDomains` | `chrome.storage.session` | `string[]` of site keys | **this-session** allow-list; auto-cleared when the browser fully closes |
 
-`chrome.storage.session` is the mechanism that makes unlocks session-scoped —
-no manual expiry logic needed.
+A navigation is allowed if its site key is in **either** list. "Lock everything
+now" clears both; the Settings page can remove individual forever-sites.
 
 ### Messaging API (background `onMessage`)
 - `{ type: 'unlock', domain, url, password }` → `{ ok: boolean }`. Verifies hash;
@@ -276,19 +280,18 @@ requires re-entering the current password (hash compare) before updating.
 1. `chrome://extensions` → enable **Developer mode** (top-right).
 2. **Load unpacked** → select the `WhitelistWeb` folder.
 3. The options page opens automatically — set the password (confirm field).
-4. Browse: any new base domain shows the lock screen until the password is
-   entered; unlocked domains stay open until the browser closes.
+4. Browse: any new site (full hostname, `www.` aside) shows the lock screen
+   until the password is entered. Choose **Allow forever** or **Just this time**;
+   forever-sites persist across restarts, session-sites clear on browser close.
 
 ## Suggested next steps for a developer
 - **Offline fonts:** self-host Baloo 2 + Nunito (removes the Google Fonts
   dependency on the kiosk/lock screen).
-- **Public Suffix List:** the compound-suffix set in `getBaseDomain()` is a
-  pragmatic subset. For exhaustive correctness, swap in a bundled PSL.
+- **Subdomain policy:** matching is per-hostname (`getSiteKey()`, `www.`
+  stripped). If you later want optional "unlock the whole domain" behavior,
+  reintroduce an eTLD+1 reduction behind a setting.
 - **Hardening (if needed):** combine with `declarativeNetRequest` static rules
   to eliminate the wake-up flash, keeping the password flow for the unlock step.
-- **Allow-list management UI:** optionally expose the current session
-  allow-list in the popup with per-domain re-lock.
 - **Tab coverage:** currently guards top-level navigations; consider also
   handling `chrome.tabs.onUpdated` for SPA in-place URL changes if you find
-  sites that route client-side past the base-domain check (rare for the eTLD+1
-  model, since the base domain doesn't change).
+  sites that route client-side past the hostname check.

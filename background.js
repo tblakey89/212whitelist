@@ -1,11 +1,12 @@
 /* WhitelistWeb — MV3 service worker
  *
  * Responsibilities:
- *   - Intercept top-level navigations and redirect to a lock screen
- *     unless the destination's base domain is already unlocked this session.
- *   - Verify the password (SHA-256 hash compare) and manage the session
- *     allow-list when the lock screen asks to unlock a site.
- *   - Clear the allow-list on demand ("Lock now").
+ *   - Intercept top-level navigations and redirect to a lock screen unless the
+ *     destination's site key (full hostname, www stripped) is already unlocked,
+ *     either forever (chrome.storage.local) or for this session (chrome.storage.session).
+ *   - Verify the password (SHA-256 hash compare) and add the site to the chosen
+ *     allow-list when the lock screen asks to unlock it.
+ *   - Clear both allow-lists on demand ("Lock now"); forget a single forever-site.
  *   - Steer the parent to the setup page when no password exists yet.
  *
  * Security note: this is deliberately simple. It stops an 8-year-old, not a
@@ -23,42 +24,24 @@ let sessionSet = new Set();  // this session only (session)
 let passwordHash = null;
 let cacheReady = false;
 
-// Common compound public suffixes, so "foo.co.uk" groups as "foo.co.uk"
-// (its eTLD+1) instead of collapsing to "co.uk". Not exhaustive, but covers
-// the suffixes a kid is realistically going to hit.
-const MULTI_SUFFIXES = new Set([
-  'co.uk', 'org.uk', 'gov.uk', 'ac.uk', 'me.uk', 'net.uk', 'sch.uk', 'ltd.uk',
-  'co.jp', 'or.jp', 'ne.jp', 'ac.jp', 'go.jp',
-  'co.kr', 'or.kr', 'ne.kr',
-  'com.au', 'net.au', 'org.au', 'edu.au', 'gov.au',
-  'com.br', 'net.br', 'org.br', 'gov.br',
-  'com.cn', 'net.cn', 'org.cn', 'gov.cn',
-  'co.in', 'net.in', 'org.in', 'gen.in', 'firm.in',
-  'co.za', 'org.za', 'net.za',
-  'com.mx', 'com.sg', 'com.hk', 'com.tw', 'com.tr', 'com.ar',
-  'com.pl', 'com.ua', 'com.sa', 'com.eg', 'com.ph', 'com.my', 'com.vn',
-  'co.nz', 'net.nz', 'org.nz', 'govt.nz',
-  'co.id', 'co.th', 'co.il', 'org.il', 'net.il'
-]);
-
 // ---- Helpers ------------------------------------------------------------
 
-// Reduce a hostname to its base domain (eTLD+1). e.g.
-//   m.youtube.com  -> youtube.com
-//   www.bbc.co.uk  -> bbc.co.uk
-function getBaseDomain(hostname) {
+// The key we unlock against is the FULL hostname, so each subdomain is its own
+// site (kids.youtube.com is separate from youtube.com). The only exception is a
+// leading "www." — it's treated as the bare domain so that the common
+// "youtube.com -> www.youtube.com" redirect doesn't re-lock the page you just
+// approved. e.g.
+//   youtube.com       -> youtube.com
+//   www.youtube.com   -> youtube.com   (www stripped)
+//   m.youtube.com     -> m.youtube.com (separate site)
+//   kids.youtube.com  -> kids.youtube.com (separate site)
+function getSiteKey(hostname) {
   let host = (hostname || '').toLowerCase().replace(/\.+$/, '');
   if (!host) return '';
   if (host === 'localhost') return host;
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return host; // IPv4 literal
   if (host.includes(':')) return host;                   // IPv6-ish literal
-
-  const parts = host.split('.');
-  if (parts.length <= 2) return host;
-
-  const last2 = parts.slice(-2).join('.');
-  if (MULTI_SUFFIXES.has(last2)) return parts.slice(-3).join('.');
-  return last2;
+  return host.replace(/^www\./, '');                     // www. == bare domain
 }
 
 // Only guard real web pages. Everything else (chrome://, chrome-extension://,
@@ -123,7 +106,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
     return;
   }
 
-  const domain = getBaseDomain(new URL(url).hostname);
+  const domain = getSiteKey(new URL(url).hostname);
   if (!domain || allowSet.has(domain) || sessionSet.has(domain)) return; // allowed forever or this session
 
   // Block: redirect the tab to the lock screen before the real page renders.
